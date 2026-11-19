@@ -31,4 +31,12 @@ run helm upgrade --install "$KPS_RELEASE" "$KPS_CHART" --version "$KPS_CHART_VER
   --kube-context "$ctx" -n "$MON_NS" "${values[@]}" --wait --timeout 10m
 
 kc apply -k "$ROOT/monitoring"
+
+# helm --wait covers the chart's Deployments, but the operator creates the
+# Prometheus StatefulSet afterwards, so wait for it before reporting ready.
+for _ in $(seq 1 30); do
+  kubectl --context "$ctx" -n "$MON_NS" get statefulset prometheus-kps-prometheus >/dev/null 2>&1 && break
+  sleep 5
+done
+kc -n "$MON_NS" rollout status statefulset/prometheus-kps-prometheus --timeout=5m
 log "monitoring ready. Grafana: make grafana$( [ "$cluster" = kind ] && echo ' CLUSTER=kind')"

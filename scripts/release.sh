@@ -10,6 +10,13 @@ repo="$(gh_repo)"
 [ -n "$(gh variable list --repo "$repo" --json name -q '.[] | select(.name=="EKS_CLUSTER_NAME") | .name')" ] \
   || die "repo variable EKS_CLUSTER_NAME is not set, so CI would skip the deploy. Run: make infra-up (or make gh-setup)"
 
+# The workflow builds origin/main, not this checkout: refuse if they differ.
+[ -z "$(git -C "$ROOT" status --porcelain)" ] \
+  || die "uncommitted changes would not be deployed. Commit and push them first"
+run git -C "$ROOT" fetch -q origin main
+[ "$(git -C "$ROOT" rev-parse HEAD)" = "$(git -C "$ROOT" rev-parse origin/main)" ] \
+  || die "local HEAD differs from origin/main, so CI would deploy something else. Run: git push (or git pull)"
+
 started="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 run gh workflow run app.yml --repo "$repo" --ref main
 
