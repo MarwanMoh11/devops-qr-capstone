@@ -1,19 +1,41 @@
 'use client'
 
 import { useState } from 'react';
-import axios from 'axios';
+
+function errorMessage(status, data) {
+  if (status === 422) return 'Please enter a valid http(s) URL, such as https://example.com.';
+  if (status === 502 || status === 503) return 'The QR service is unavailable right now. Please try again.';
+  if (typeof data?.detail === 'string') return data.detail;
+  return `Something went wrong (HTTP ${status}).`;
+}
 
 export default function Home() {
   const [url, setUrl] = useState('');
   const [qrCodeUrl, setQrCodeUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError('');
+    setQrCodeUrl('');
     try {
-      const response = await axios.post(`http://localhost:8000/generate-qr/?url=${url}`);
-      setQrCodeUrl(response.data.qr_code_url);
-    } catch (error) {
-      console.error('Error generating QR Code:', error);
+      const response = await fetch('/api/qr', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (response.status === 201 && data.image_url) {
+        setQrCodeUrl(data.image_url);
+      } else {
+        setError(errorMessage(response.status, data));
+      }
+    } catch {
+      setError('Could not reach the server. Check your connection and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -26,11 +48,18 @@ export default function Home() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           placeholder="Enter URL like https://example.com"
+          aria-label="URL"
           style={styles.input}
         />
-        <button type="submit" style={styles.button}>Generate QR Code</button>
+        <button type="submit" disabled={loading} style={styles.button}>
+          {loading ? 'Generating…' : 'Generate QR Code'}
+        </button>
       </form>
-      {qrCodeUrl && <img src={qrCodeUrl} alt="QR Code" style={styles.qrCode} />}
+      {error && <p role="alert" style={styles.error}>{error}</p>}
+      {qrCodeUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- served by our own /api/qr proxy
+        <img src={qrCodeUrl} alt="QR Code" style={styles.qrCode} />
+      )}
     </div>
   );
 }
@@ -74,6 +103,10 @@ const styles = {
     backgroundColor: '#0070f3',
     color: 'white',
     cursor: 'pointer',
+  },
+  error: {
+    marginTop: '20px',
+    color: '#ff6b6b',
   },
   qrCode: {
     marginTop: '20px',

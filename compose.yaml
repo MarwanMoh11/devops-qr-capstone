@@ -1,0 +1,83 @@
+# Local stack: MinIO (S3) + bucket init + API + web. `docker compose up -d --build --wait`.
+# Credentials below are dev-only values from docs/DESIGN.md §10, never real AWS keys.
+name: devops-qr
+
+x-hardening: &hardening
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+
+x-s3-env: &s3-env
+  AWS_ACCESS_KEY_ID: qrlocal
+  AWS_SECRET_ACCESS_KEY: qrlocal-dev-only
+  AWS_REGION: us-east-1
+
+services:
+  qr-s3:
+    image: cgr.dev/chainguard/minio@sha256:16b824a0016ffad3dfa8b059755f83800aa42ca68fe86f1782cabd0c5a16d322
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: qrlocal
+      MINIO_ROOT_PASSWORD: qrlocal-dev-only
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    # Distroless and non-root (uid 65532): no shell healthcheck, tmpfs data owned by that uid.
+    tmpfs:
+      - /data:uid=65532,gid=65532,mode=0700
+    <<: *hardening
+
+  qr-s3-init:
+    image: amazon/aws-cli:2.41.1
+    depends_on:
+      - qr-s3
+    environment: *s3-env
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        for i in $$(seq 1 30); do
+          if out=$$(aws --endpoint-url http://qr-s3:9000 s3api create-bucket --bucket qr-codes-local 2>&1); then
+            echo "created bucket qr-codes-local"; exit 0
+          fi
+          case "$$out" in *BucketAlreadyOwnedByYou*) echo "bucket qr-codes-local exists"; exit 0;; esac
+          sleep 2
+        done
+        echo "$$out" >&2; exit 1
+    restart: "no"
+
+  qr-api:
+    build:
+      context: ./api
+      target: runtime
+    image: qr-api:dev
+    environment:
+      <<: *s3-env
+      S3_BUCKET: qr-codes-local
+      S3_ENDPOINT_URL: http://qr-s3:9000
+      S3_KEY_PREFIX: qr_codes/
+      LOG_LEVEL: info
+    ports:
+      - "8000:8000"
+    depends_on:
+      qr-s3-init:
+        condition: service_completed_successfully
+    <<: *hardening
+
+  qr-web:
+    build:
+      context: ./front-end-nextjs
+      target: runtime
+    image: qr-web:dev
+    environment:
+      API_INTERNAL_URL: http://qr-api:8000
+      PORT: "3000"
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "3000:3000"
+    tmpfs:
+      - /app/.next/cache:uid=1001,gid=1001
+    depends_on:
+      qr-api:
+        condition: service_healthy
+    <<: *hardening

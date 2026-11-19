@@ -1,0 +1,4 @@
+# hadolint config for api/Dockerfile and front-end-nextjs/Dockerfile.
+# No rules are ignored: neither Dockerfile installs apt/apk packages (DL3008/DL3018 not needed).
+failure-threshold: info
+ignored: []

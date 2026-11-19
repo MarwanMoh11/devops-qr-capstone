@@ -1,0 +1,14 @@
+.git
+node_modules
+.next
+out
+build
+coverage
+.env
+.env*
+.vercel
+*.tsbuildinfo
+npm-debug.log*
+.eslintcache
+Dockerfile
+.dockerignore
