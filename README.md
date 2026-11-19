@@ -136,6 +136,20 @@ builds and patches the nodes from the AL2023 EKS AMI) and by the Kubernetes mani
 (declarative app config). There are no long-lived hosts to configure, so Ansible would have
 nothing to manage.
 
+## What has been verified
+
+Checked on 19 Nov 2026 (macOS arm64, Colima):
+
+| Check | Result |
+|---|---|
+| `make lint` (shellcheck, actionlint, hadolint, terraform fmt/validate, tflint, kustomize + kubeconform, helm template) | pass |
+| `make test` (API: ruff + 18 pytest tests with moto; web: eslint) | pass |
+| `make local-up local-smoke local-down` (Docker Compose + MinIO) | pass |
+| `make kind-up kind-deploy kind-smoke kind-monitoring` | pass: POST `/api/qr` returns 201 and the PNG is served; Prometheus target `qr-api` is up with route-labelled request metrics; Grafana loads the `qr-services` dashboard |
+| GitHub Actions on the first push (`lint`, `app`, `infra`) | green; AWS jobs skip until `make gh-setup` sets the repo variables |
+
+**Not yet run against AWS:** `bootstrap`, `infra-up`, the CI deploy, the NLB, Pod Identity, Container Insights and `nuke`/`verify-clean`. These have been checked by reading the code, not by running them.
+
 ## Attribution
 
 The sample application comes from
