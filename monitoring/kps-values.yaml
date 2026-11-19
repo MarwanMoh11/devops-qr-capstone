@@ -1,0 +1,101 @@
+# kube-prometheus-stack 93.4.0, release kps, namespace monitoring (common to kind and EKS).
+#   helm upgrade --install kps oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack \
+#     --version 93.4.0 -n monitoring -f monitoring/kps-values.yaml [-f monitoring/kps-values-kind.yaml] \
+#     --wait --timeout 10m
+# Lean on purpose: 2 x t3a.medium (17 pods each), no Alertmanager, no PVCs (no EBS CSI driver).
+fullnameOverride: kps
+
+alertmanager:
+  enabled: false
+
+# Control-plane components are not scrapeable on EKS.
+kubeEtcd:
+  enabled: false
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+prometheus:
+  prometheusSpec:
+    retention: 24h
+    retentionSize: 2GB
+    scrapeInterval: 30s
+    # No storageSpec: the TSDB lives in an emptyDir and leaves no EBS volume behind.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+  # Created by Helm after the CRDs, so there is no ordering problem on the first install.
+  additionalServiceMonitors:
+    - name: qr-api
+      namespaceSelector:
+        matchNames:
+          - qr-app
+      selector:
+        matchLabels:
+          app.kubernetes.io/name: qr-api
+      endpoints:
+        - port: http
+          path: /metrics
+          interval: 15s
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 192Mi
+
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 96Mi
+
+grafana:
+  persistence:
+    enabled: false
+  testFramework:
+    enabled: false
+  # Secret created by scripts/monitoring-up.sh (openssl rand) before the helm install.
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  defaultDashboardsEnabled: true
+  resources:
+    requests:
+      cpu: 50m
+      memory: 160Mi
+    limits:
+      memory: 384Mi
+  sidecar:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+    dashboards:
+      enabled: true
+      # Picks up the qr-dashboards ConfigMap from monitoring/kustomization.yaml.
+      label: grafana_dashboard
+      labelValue: "1"

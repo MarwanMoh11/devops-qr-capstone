@@ -1,0 +1,16 @@
+# kind: images come from `kind load`, and the API gets the dev-only MinIO credentials.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: qr-api
+spec:
+  template:
+    spec:
+      containers:
+        - name: qr-api
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: qr-api-config
+            - secretRef:
+                name: qr-s3-credentials

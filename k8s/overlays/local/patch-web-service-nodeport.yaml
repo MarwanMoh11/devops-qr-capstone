@@ -1,0 +1,13 @@
+# kind maps host 8080 -> node 30080 (k8s/kind/cluster.yaml).
+apiVersion: v1
+kind: Service
+metadata:
+  name: qr-web
+spec:
+  type: NodePort
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      nodePort: 30080
+      protocol: TCP

@@ -1,0 +1,72 @@
+# One-shot: create bucket qr-codes-local on qr-s3. Retries for up to 5 min (covers a cold image
+# pull of MinIO on kind) and treats an existing bucket as success.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: qr-s3-init
+  labels:
+    app.kubernetes.io/name: qr-s3-init
+    app.kubernetes.io/component: storage
+spec:
+  backoffLimit: 3
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: qr-s3-init
+        app.kubernetes.io/component: storage
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: qr-s3-init
+          image: amazon/aws-cli:2.41.1
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -u
+              for i in $(seq 1 150); do
+                if aws --endpoint-url "$S3_ENDPOINT_URL" s3api head-bucket --bucket "$S3_BUCKET" >/dev/null 2>&1; then
+                  echo "bucket $S3_BUCKET ready"; exit 0
+                fi
+                out=$(aws --endpoint-url "$S3_ENDPOINT_URL" s3api create-bucket --bucket "$S3_BUCKET" 2>&1) && { echo "created $S3_BUCKET"; exit 0; }
+                case "$out" in *BucketAlreadyOwnedByYou*) echo "bucket $S3_BUCKET exists"; exit 0;; esac
+                echo "attempt $i: qr-s3 not ready yet"; sleep 2
+              done
+              echo "gave up creating $S3_BUCKET" >&2; exit 1
+          envFrom:
+            - secretRef:
+                name: qr-s3-credentials
+          env:
+            - name: S3_ENDPOINT_URL
+              value: http://qr-s3:9000
+            - name: S3_BUCKET
+              value: qr-codes-local
+            - name: AWS_DEFAULT_REGION
+              value: us-east-1
+            - name: HOME
+              value: /tmp
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

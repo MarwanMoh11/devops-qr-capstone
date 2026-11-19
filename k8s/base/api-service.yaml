@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: qr-api
+  labels:
+    # The qr-api ServiceMonitor (monitoring/kps-values.yaml) selects on this label and port name.
+    app.kubernetes.io/name: qr-api
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: qr-api
+    app.kubernetes.io/component: api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+      protocol: TCP

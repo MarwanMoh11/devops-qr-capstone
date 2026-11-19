@@ -1,0 +1,9 @@
+# Public entry (D1): an NLB created by EKS's in-tree service controller. No AWS LB Controller.
+apiVersion: v1
+kind: Service
+metadata:
+  name: qr-web
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb
+spec:
+  type: LoadBalancer

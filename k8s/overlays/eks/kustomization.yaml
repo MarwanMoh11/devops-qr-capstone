@@ -1,0 +1,30 @@
+# EKS overlay. Do NOT apply this directly: scripts/deploy.sh copies k8s/ to a temp dir and, in
+# that copy of this directory, runs
+#   kustomize edit set image qr-api=$ECR_REGISTRY/devops-qr/api:$TAG qr-web=$ECR_REGISTRY/devops-qr/web:$TAG
+#   kustomize edit add configmap qr-api-config --behavior=merge \
+#     --from-literal=S3_BUCKET=$S3_BUCKET --from-literal=AWS_REGION=$AWS_REGION
+# Until then the placeholders below (ECR_REGISTRY, GIT_SHA) and base S3_BUCKET=set-at-deploy stay,
+# so `kustomize build` still succeeds; an unedited apply fails fast with InvalidImageName.
+# No configMapGenerator here on purpose: `kustomize edit add configmap` adds the merge entry.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: qr-api
+    newName: ECR_REGISTRY/devops-qr/api
+    newTag: GIT_SHA
+  - name: qr-web
+    newName: ECR_REGISTRY/devops-qr/web
+    newTag: GIT_SHA
+
+replicas:
+  - name: qr-api
+    count: 2
+  - name: qr-web
+    count: 2
+
+patches:
+  - path: patch-web-service-nlb.yaml

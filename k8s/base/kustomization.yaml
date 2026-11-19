@@ -1,0 +1,39 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: qr-app
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: devops-qr
+    includeSelectors: false
+
+resources:
+  - api-serviceaccount.yaml
+  - api-deployment.yaml
+  - api-service.yaml
+  - web-serviceaccount.yaml
+  - web-deployment.yaml
+  - web-service.yaml
+
+# Placeholders: overlays (local) or scripts/deploy.sh (eks, `kustomize edit set image`) set the real
+# name and tag. A non-latest tag keeps the default imagePullPolicy at IfNotPresent.
+images:
+  - name: qr-api
+    newTag: set-at-deploy
+  - name: qr-web
+    newTag: set-at-deploy
+
+configMapGenerator:
+  - name: qr-api-config
+    literals:
+      - S3_BUCKET=set-at-deploy
+      - AWS_REGION=us-east-1
+      - S3_KEY_PREFIX=qr_codes/
+      - LOG_LEVEL=info
+  - name: qr-web-config
+    literals:
+      - API_INTERNAL_URL=http://qr-api:8000
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXT_TELEMETRY_DISABLED=1

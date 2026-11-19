@@ -1,0 +1,5 @@
+# kind-only overrides, layered after kps-values.yaml.
+prometheus-node-exporter:
+  # Docker Desktop does not support the rslave mount propagation the root-fs mount needs.
+  hostRootFsMount:
+    enabled: false

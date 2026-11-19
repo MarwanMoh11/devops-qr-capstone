@@ -1,0 +1,36 @@
+# kind overlay: kustomize build k8s/overlays/local | kubectl apply -f -
+# Images are built on the laptop and loaded with `kind load docker-image qr-api:dev qr-web:dev`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Overlay-added resources do not inherit base transformers, so repeat namespace and part-of here.
+namespace: qr-app
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: devops-qr
+    includeSelectors: false
+
+resources:
+  - ../../base
+  - s3-secret.yaml
+  - s3.yaml
+  - s3-init-job.yaml
+
+images:
+  - name: qr-api
+    newTag: dev
+  - name: qr-web
+    newTag: dev
+
+configMapGenerator:
+  - name: qr-api-config
+    behavior: merge
+    literals:
+      - S3_BUCKET=qr-codes-local
+      - S3_ENDPOINT_URL=http://qr-s3:9000
+
+patches:
+  - path: patch-api-local.yaml
+  - path: patch-web-local.yaml
+  - path: patch-web-service-nodeport.yaml
