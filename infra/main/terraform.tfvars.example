@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars (gitignored) or pass with -var. Only
+# admin_principal_arn is required; the rest show the defaults.
+#
+#   terraform -chdir=infra/bootstrap output -raw admin_principal_arn
+
+admin_principal_arn = "arn:aws:iam::<account-id>:role/<your-admin-role>"
+
+# project               = "devops-qr"
+# region                = "us-east-1"
+# kubernetes_version    = "1.36"
+# az_ids                = ["use1-az1", "use1-az2"]
+# vpc_cidr              = "10.40.0.0/16"
+# node_instance_types   = ["t3a.medium", "t3.medium"]
+# node_min              = 1
+# node_desired          = 2
+# node_max              = 3
+# qr_object_expiry_days = 7

@@ -1,0 +1,12 @@
+# Terraform working dirs, state and plans never go to Git.
+# .terraform.lock.hcl IS committed (pins provider hashes for darwin_arm64 + linux_amd64).
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+# Real tfvars hold the admin ARN; only the example is committed.
+*.tfvars
+!*.tfvars.example
