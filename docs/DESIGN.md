@@ -116,7 +116,7 @@ flowchart LR
 
 | | `api/Dockerfile` | `front-end-nextjs/Dockerfile` |
 |---|---|---|
-| Base | `python:3.14-slim-trixie` (*pin at build time*: confirm the tag exists; a digest pin is optional) | `node:24-alpine` (LTS) |
+| Base | `python:3.14-slim-trixie` (*pin at build time*: confirm the tag exists; a digest pin is optional) | `node:24.22.3-trixie-slim` (LTS; not Alpine: musl's resolver fails on Colima's empty AAAA answers and hangs `npm ci`) |
 | Stages, in order (the last stage is the default) | `base` (venv at `/opt/venv` from `requirements.txt`) → `test` (adds dev deps, runs `ruff check . && ruff format --check . && pytest -q`) → `runtime` | `deps` (`npm ci`) → `test` (`npm run lint`) → `builder` (`npm run build`) → `runtime` (copies `.next/standalone`, `.next/static`, `public`) |
 | User | `USER 10001:10001` (numeric) | `USER 1001:1001` (numeric) |
 | Port / CMD | 8000 / `uvicorn main:app --host 0.0.0.0 --port 8000 --no-access-log` | 3000 / `node server.js` with `PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1` |

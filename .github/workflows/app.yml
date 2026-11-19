@@ -1,0 +1,193 @@
+# App pipeline (D9): test -> build linux/amd64 -> push to ECR (:<sha>) -> deploy -> smoke test.
+# AWS jobs are gated on repo variables, so a repo with no AWS variables runs green
+# (those jobs show as skipped). `make gh-setup` sets the variables; `make infra-down`
+# removes EKS_CLUSTER_NAME so pushes stop deploying.
+name: app
+
+on:
+  pull_request:
+    paths: &app-paths
+      - "api/**"
+      - "front-end-nextjs/**"
+      - "k8s/**"
+      - "compose.yaml"
+      - "scripts/deploy.sh"
+      - "scripts/smoke-test.sh"
+      - "scripts/url.sh"
+      - "scripts/lib.sh"
+      - "project.env"
+      - "tool-versions.env"
+      - ".github/workflows/app.yml"
+  push:
+    branches: [main]
+    paths: *app-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (${{ matrix.app }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            context: api
+          - app: web
+            context: front-end-nextjs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: docker build --target test
+        run: docker build --target test "${{ matrix.context }}"
+
+  manifests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Z_]+=' tool-versions.env >> "$GITHUB_ENV"
+      - name: Install kustomize and kubeconform
+        run: scripts/ci-install-tools.sh kustomize kubeconform
+      - name: kustomize build + kubeconform (base, local, eks with placeholders)
+        run: scripts/lint.sh k8s
+
+  build:
+    name: build (${{ matrix.app }}, PR only)
+    if: github.event_name == 'pull_request'
+    needs: test
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            context: api
+          - app: web
+            context: front-end-nextjs
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build runtime image linux/amd64 (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          target: runtime
+          platforms: linux/amd64
+          push: false
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.app }}
+
+  publish:
+    name: publish (${{ matrix.app }})
+    needs: [test, manifests]
+    if: >-
+      vars.EKS_CLUSTER_NAME != '' && vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      vars.AWS_REGION != '' && vars.ECR_REGISTRY != '' &&
+      vars.ECR_REPO_API != '' && vars.ECR_REPO_WEB != '' &&
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: api
+            context: api
+            repo_var: ECR_REPO_API
+          - app: web
+            context: front-end-nextjs
+            repo_var: ECR_REPO_WEB
+    env:
+      IMAGE: ${{ vars.ECR_REGISTRY }}/${{ vars[matrix.repo_var] }}:${{ github.sha }}
+      REPO: ${{ vars[matrix.repo_var] }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - uses: aws-actions/amazon-ecr-login@7290e214a610b32bc0eef81748948b6d466a8783 # v2.2.0
+      # ECR tags are IMMUTABLE: a re-run for the same SHA must skip the push (gotcha 18).
+      - name: Skip if the tag already exists
+        id: exists
+        run: |
+          if out="$(aws ecr describe-images --repository-name "$REPO" \
+              --image-ids "imageTag=$GITHUB_SHA" 2>&1)"; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE already in ECR; skipping build" >> "$GITHUB_STEP_SUMMARY"
+          elif printf '%s' "$out" | grep -q ImageNotFoundException; then
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$out" >&2
+            exit 1
+          fi
+      - if: steps.exists.outputs.found == 'false'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build and push linux/amd64
+        if: steps.exists.outputs.found == 'false'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ matrix.context }}
+          target: runtime
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.IMAGE }}
+          # Single-arch image, no attestation manifests (keeps ECR lifecycle rules simple).
+          provenance: false
+          sbom: false
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+  deploy:
+    needs: publish
+    if: >-
+      vars.EKS_CLUSTER_NAME != '' && vars.AWS_DEPLOY_ROLE_ARN != '' &&
+      vars.AWS_REGION != '' && vars.ECR_REGISTRY != '' && vars.S3_BUCKET != '' &&
+      github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-eks
+      cancel-in-progress: false
+    env:
+      ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+      S3_BUCKET: ${{ vars.S3_BUCKET }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Z_]+=' tool-versions.env >> "$GITHUB_ENV"
+      - name: Install kustomize
+        run: scripts/ci-install-tools.sh kustomize
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: kubeconfig (context devops-qr-eks)
+        run: >-
+          aws eks update-kubeconfig --region "${{ vars.AWS_REGION }}"
+          --name "${{ vars.EKS_CLUSTER_NAME }}" --alias "${{ vars.EKS_CLUSTER_NAME }}"
+      - name: Deploy this SHA
+        run: scripts/deploy.sh eks "$GITHUB_SHA"
+      - name: Smoke test the public URL
+        run: |
+          url="$(scripts/url.sh)"
+          echo "Public URL: $url" >> "$GITHUB_STEP_SUMMARY"
+          scripts/smoke-test.sh "$url"

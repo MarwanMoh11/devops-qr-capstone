@@ -1,0 +1,64 @@
+# Static checks for automation, Dockerfiles and monitoring. Same commands as `make lint`.
+name: lint
+
+on:
+  pull_request:
+    paths: &lint-paths
+      - "scripts/**"
+      - "Makefile"
+      - "project.env"
+      - "tool-versions.env"
+      - ".shellcheckrc"
+      - ".github/**"
+      - "monitoring/**"
+      - "**/Dockerfile"
+      - ".hadolint.yaml"
+  push:
+    branches: [main]
+    paths: *lint-paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  automation:
+    name: actionlint + shellcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Z_]+=' tool-versions.env >> "$GITHUB_ENV"
+      - name: Install actionlint and shellcheck
+        run: scripts/ci-install-tools.sh shellcheck actionlint
+      - run: scripts/lint.sh shell
+      - run: scripts/lint.sh actions
+
+  dockerfiles:
+    name: hadolint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Z_]+=' tool-versions.env >> "$GITHUB_ENV"
+      - name: Install hadolint
+        run: scripts/ci-install-tools.sh hadolint
+      - run: scripts/lint.sh docker
+
+  monitoring:
+    name: helm template + kubeconform, dashboard JSON
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Load pinned tool versions
+        run: grep -E '^[A-Z_]+=' tool-versions.env >> "$GITHUB_ENV"
+      - name: Install kustomize and kubeconform
+        run: scripts/ci-install-tools.sh kustomize kubeconform
+      # helm and jq come preinstalled on the ubuntu-24.04 runner image.
+      - run: scripts/lint.sh monitoring
