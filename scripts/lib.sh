@@ -145,14 +145,25 @@ gh_repo() { gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || t
 # ---------------------------------------------------------------- Terraform
 tf_boot_out() { terraform -chdir="$TF_BOOT" output -raw "$1" 2>/dev/null || true; }
 
+# Resource addresses in the bootstrap state; empty when there is none. Callers capture
+# this: piping terraform into `grep -q` under pipefail fails at random, because grep
+# exits on the first match and terraform then dies of SIGPIPE.
+boot_state_list() {
+  [ -s "$TF_BOOT/terraform.tfstate" ] || return 0
+  terraform -chdir="$TF_BOOT" state list || die "cannot read infra/bootstrap/terraform.tfstate"
+}
+
 boot_state_exists() {
-  [ -s "$TF_BOOT/terraform.tfstate" ] && terraform -chdir="$TF_BOOT" state list 2>/dev/null | grep -q .
+  local list
+  list="$(boot_state_list)" || exit 1
+  [ -n "$list" ]
 }
 
 # true when the bootstrap state already manages the GitHub OIDC provider
 boot_owns_oidc() {
-  terraform -chdir="$TF_BOOT" state list 2>/dev/null \
-    | grep -v -E '(^|\.)data\.' | grep -q -E '(^|\.)aws_iam_openid_connect_provider\.'
+  local list
+  list="$(boot_state_list)" || exit 1
+  grep -E '^aws_iam_openid_connect_provider\.' <<<"$list" >/dev/null
 }
 
 # Value for create_github_oidc_provider. Only false when the provider exists AND

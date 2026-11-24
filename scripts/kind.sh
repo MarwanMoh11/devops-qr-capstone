@@ -3,7 +3,7 @@
 . "$(dirname "$0")/lib.sh"
 need kind kubectl kustomize docker
 
-kind_exists() { kind get clusters 2>/dev/null | grep -qx "$KIND_CLUSTER"; }
+kind_exists() { kind get clusters 2>/dev/null | grep -x "$KIND_CLUSTER" >/dev/null; }
 
 # Third-party images the local overlay uses, referenced by tag (e.g. amazon/aws-cli).
 # Pulling them inside the single kind node is slow and can starve etcd and the
