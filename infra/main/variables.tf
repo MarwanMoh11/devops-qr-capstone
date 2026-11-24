@@ -64,15 +64,18 @@ variable "vpc_cidr" {
 }
 
 variable "node_instance_types" {
+  # The defaults work on AWS's Free account plan, which only launches free-tier-eligible
+  # types (of those, t3.micro and t3.small have too few pod slots). On a Paid plan,
+  # ["t3a.medium", "t3.medium"] is cheaper.
   description = "Node instance types in preference order. x86_64 only (the AMI is AL2023_x86_64_STANDARD) and capped at large to keep cost predictable."
   type        = list(string)
-  default     = ["t3a.medium", "t3.medium"]
+  default     = ["m7i-flex.large", "c7i-flex.large"]
 
   validation {
     condition = length(var.node_instance_types) > 0 && alltrue([
-      for t in var.node_instance_types : can(regex("^t3a?\\.(medium|large)$", t))
+      for t in var.node_instance_types : can(regex("^(t3a?\\.(medium|large)|[cm]7i-flex\\.large)$", t))
     ])
-    error_message = "node_instance_types may only contain t3.medium, t3a.medium, t3.large or t3a.large."
+    error_message = "node_instance_types may only contain t3.medium, t3a.medium, t3.large, t3a.large, m7i-flex.large or c7i-flex.large."
   }
 }
 
@@ -88,7 +91,7 @@ variable "node_min" {
 }
 
 variable "node_desired" {
-  description = "Node group desired size. Pod slots (17 per t3a.medium) bind first; raise to 3 on 'Too many pods'."
+  description = "Node group desired size. Pod slots (29 per m7i-flex.large, 17 per t3a.medium) bind first; raise to 3 on 'Too many pods'."
   type        = number
   default     = 2
 
