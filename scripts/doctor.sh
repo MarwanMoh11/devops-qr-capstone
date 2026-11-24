@@ -66,7 +66,7 @@ echo "Logins"
 if command -v aws >/dev/null 2>&1 && ident="$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)"; then
   ok "AWS: $ident"
 else
-  drift "AWS not logged in (needed for cloud targets): aws configure   or   aws sso login"
+  drift "AWS not logged in (needed for cloud targets): aws login   or   aws sso login"
 fi
 if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
   ok "GitHub: $(gh api user -q .login 2>/dev/null || echo logged in)"

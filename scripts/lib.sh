@@ -60,7 +60,7 @@ kube_context() {
 require_aws() {
   need aws jq
   aws sts get-caller-identity --output json >/dev/null 2>&1 \
-    || die "AWS CLI is not logged in. Run: aws configure   (or: aws sso login)"
+    || die "AWS CLI is not logged in. Run: aws login   (or: aws sso login), as an IAM admin user, not root"
 }
 
 aws_account_id() { aws sts get-caller-identity --query Account --output text; }

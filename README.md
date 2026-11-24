@@ -50,7 +50,7 @@ standard AWS account (not AWS Academy / Learner Lab), and a GitHub account.
 ```bash
 make tools                 # once: installs every CLI from the Brewfile (incl. Colima + docker)
 colima start --cpu 4 --memory 8   # once per boot; skip if Docker is already running
-aws configure              # human step (or: aws sso login)
+aws login                  # human step: IAM admin user, not root (or: aws sso login)
 gh auth login              # human step
 make doctor                # tools, Docker, logins
 
@@ -124,8 +124,10 @@ each one runs, what success looks like, troubleshooting and teardown verificatio
 
 ## Cost
 
-About **$0.25/hour (~$6/day)** in us-east-1 while the cluster runs (EKS control plane
-$0.10/h, 2 × t3a.medium, public IPv4, one NLB, Container Insights). No NAT gateway.
+About **$0.37/hour (~$9/day)** in us-east-1 while the cluster runs (EKS control plane
+$0.10/h, 2 × m7i-flex.large, public IPv4, one NLB, Container Insights). No NAT gateway.
+The node type is one the AWS Free account plan allows; on a Paid plan, t3a.medium brings
+it to about $0.25/hour.
 `make nuke` deletes everything and `make verify-clean` checks nothing billable is left.
 The cost table is in the [RUNBOOK](docs/RUNBOOK.md#cost).
 
@@ -149,7 +151,20 @@ Checked on 19 Nov 2026 (macOS arm64, Colima):
 | GitHub Actions on the first push (`lint`, `app`, `infra`) | green; AWS jobs skip until `make gh-setup` sets the repo variables |
 | PR build job: both images built for `linux/amd64` with buildx (the EKS target) | pass |
 
-**Not yet run against AWS:** `bootstrap`, `infra-up`, the CI deploy, the NLB, Pod Identity, Container Insights and `nuke`/`verify-clean`. These have been checked by reading the code, not by running them.
+Run on AWS on 24 Nov 2026 (new Free-plan account, us-east-1, EKS 1.36):
+
+| Check | Result |
+|---|---|
+| `make bootstrap` | pass: 11 resources |
+| `make infra-up` | pass: 66 resources in 15 minutes, 2 nodes Ready |
+| `make platform-up` | pass: Prometheus and Grafana running |
+| CI release (OIDC sign-in, ECR push, deploy to EKS, smoke test) | pass |
+| `make smoke-test` on the public NLB URL | pass: POST `/api/qr` returns 201 and the PNG is served |
+| S3 through Pod Identity | pass: the object is stored; reading it directly from S3 without credentials returns 403 |
+| Prometheus and Grafana on EKS | pass: both `qr-api` targets up, all 14 dashboard panels return data |
+| Container Insights | pass: node and `qr-app` pod metrics in CloudWatch |
+
+**Not yet run against AWS:** `nuke` and `verify-clean`.
 
 ## Attribution
 

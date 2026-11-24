@@ -33,4 +33,15 @@ for _ in $(seq 1 30); do
 done
 [ -n "$id" ] || die "could not find the dispatched app.yml run (check: gh run list --workflow app.yml)"
 log "watching run $id: https://github.com/$repo/actions/runs/$id"
-run gh run watch "$id" --repo "$repo" --exit-status
+# gh run watch gives up on a transient GitHub API error (seen: HTTP 500) while the run
+# carries on, so keep watching until GitHub reports the run's own result.
+result=""
+for _ in $(seq 1 60); do
+  gh run watch "$id" --repo "$repo" --interval 10 || true
+  result="$(gh run view "$id" --repo "$repo" --json status,conclusion \
+    -q 'select(.status == "completed") | .conclusion' 2>/dev/null || true)"
+  [ -n "$result" ] && break
+  sleep 10
+done
+[ "$result" = success ] || die "run $id: ${result:-no result from GitHub}. See https://github.com/$repo/actions/runs/$id"
+log "release passed"

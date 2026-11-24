@@ -26,15 +26,15 @@ teardown can never touch kind, and a kind deploy can never touch EKS.
 - A **standard AWS account** (credits are fine). AWS Academy / Learner Lab accounts block
   IAM role and OIDC provider creation; the preflight refuses them.
 - A GitHub account.
-- Human steps, once: `make tools` and `colima start --cpu 4 --memory 8`, then `aws configure`
-  (or `aws sso login`) and `gh auth login`.
+- Human steps, once: `make tools` and `colima start --cpu 4 --memory 8`, then `aws login`
+  as an IAM admin user, not root (or `aws sso login`), and `gh auth login`.
 
 ## 2. First-time setup sequence
 
 ```bash
 make tools          # brew bundle --file=Brewfile (CLIs, Colima, docker)
 colima start --cpu 4 --memory 8   # skip if Docker is already running
-aws configure       # or: aws sso login
+aws login           # IAM admin user, not root (or: aws sso login)
 gh auth login
 make doctor
 make test lint local-up local-smoke local-down        # optional local proof
@@ -87,7 +87,7 @@ make nuke           # when finished
 | `kind-monitoring` | `scripts/monitoring-up.sh kind` (see `monitoring-up`), with `-f monitoring/kps-values-kind.yaml` added | Helm reports the `kps` release deployed; `make grafana CLUSTER=kind` then shows the "QR services" dashboard. |
 | `kind-down` | `kind delete cluster --name qr-kind` | `kind get clusters` no longer lists `qr-kind`. |
 
-### GitHub (not yet run against AWS; GitHub-only steps)
+### GitHub
 
 | Target | Runs | Success looks like |
 |---|---|---|
@@ -102,7 +102,7 @@ make nuke           # when finished
 | `EKS_CLUSTER_NAME`, `ECR_REGISTRY` | main `cluster_name`, `ecr_registry` |
 | `ECR_REPO_API`, `ECR_REPO_WEB`, `S3_BUCKET` | main `ecr_repo_api`, `ecr_repo_web`, `s3_bucket_name` |
 
-### Cloud up (not yet run against AWS)
+### Cloud up (run on AWS, 24 Nov 2026)
 
 `bootstrap`, `infra-plan` and `infra-up` first run the full preflight (the other cloud scripts check only the AWS and/or GitHub login they need): tools present (`terraform kubectl helm kustomize jq curl gh`), `aws sts get-caller-identity` works, the caller is not the account root user (bootstrap rejects root as `admin_principal_arn`), the caller ARN is not an AWS Academy / Learner Lab role and `aws iam list-open-id-connect-providers` is allowed, and `gh auth status` works.
 
@@ -168,7 +168,7 @@ Teardown order (§9). Each step can be re-run.
 | EKS: Container Insights has no node metrics | AWS's Container Insights docs ask for IMDS hop limit 2 for the CloudWatch agent pods; `infra/main/eks.tf` sets `metadata_options.http_put_response_hop_limit = 2` (module default 1). |
 | kind: API not ready after a restart | MinIO uses an emptyDir, so the bucket is gone after a MinIO restart. `make kind-deploy` deletes and re-runs the bucket-init Job. |
 | ServiceMonitor or CRD errors after a kube-prometheus-stack major bump | Helm does not upgrade CRDs. Apply the new chart's CRDs first (`helm show crds oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack --version <new> \| kubectl --context devops-qr-eks apply --server-side -f -`), then `make monitoring-up`. |
-| Pods `Pending` with `Too many pods` | t3a.medium allows 17 pods per node. Raise the node group's desired size to 3 (`node_desired` in `infra/main`), then `make infra-up`. |
+| Pods `Pending` with `Too many pods` | m7i-flex.large allows 29 pods per node (t3a.medium 17). Raise the node group's desired size to 3; a new account's 5-vCPU limit only fits 2, so request an increase first (`node_desired` in `infra/main`), then `make infra-up`. |
 | EKS control plane cannot use an AZ | `use1-az3` cannot host the control plane; AZs are chosen by zone ID (`use1-az1`, `use1-az2`) in `infra/main`. |
 | Node group fails to create | Without NAT, public subnets need `map_public_ip_on_launch=true`, or nodes cannot reach ECR/EKS. Check `infra/main/vpc.tf`. |
 | `svc/qr-web` never gets a hostname | The in-tree LB needs subnets tagged `kubernetes.io/role/elb=1` and exactly one security group tagged `kubernetes.io/cluster/devops-qr-eks` per node. `kubectl --context devops-qr-eks -n qr-app describe svc qr-web` shows the controller's events. If the NLB annotation misbehaves, removing it gives a Classic LB; teardown is the same. |
@@ -188,13 +188,13 @@ us-east-1, on-demand, while running (§13):
 | Item | $/h |
 |---|---|
 | EKS control plane (standard support) | 0.100 |
-| 2 × t3a.medium | 0.075 |
+| 2 × m7i-flex.large (Free-plan default; 2 × t3a.medium is 0.075) | 0.192 |
 | 4 public IPv4 (2 nodes + NLB in 2 AZs) at $0.005 | 0.020 |
 | NLB (hour + ~1 NLCU) | 0.029 |
 | EBS 2 × 20 GiB gp3 | 0.004 |
 | Container Insights (enhanced observability, ~25 containers, logs off) | ~0.02 (estimate; check Cost Explorer after the first day) |
 | S3, ECR, Terraform-owned log groups | < 0.005 |
-| **Total** | **≈ $0.25/h ≈ $6/day**. Skipping NAT saves ≥ $0.045/h. `make nuke` takes it to $0. |
+| **Total** | **≈ $0.37/h ≈ $9/day**. Skipping NAT saves ≥ $0.045/h. `make nuke` takes it to $0. |
 
 GitHub Actions: a private repo on the Free plan has 2,000 minutes a month; a full `app.yml`
 run is estimated at 6–8 minutes.
