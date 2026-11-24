@@ -162,11 +162,11 @@ infra/
 |---|---|
 | State bucket | `devops-qr-tfstate-<acct>`: versioning, SSE-S3, all public access blocked, `force_destroy = true`, noncurrent versions expire after 30 days |
 | GitHub OIDC provider | `https://token.actions.githubusercontent.com`, client id `sts.amazonaws.com`, **no thumbprint list** (provider v6). `var.create_github_oidc_provider` (default true); when false, use the existing provider through a data source. |
-| Role `devops-qr-gha-deploy` | Trust: `aud=sts.amazonaws.com`, `sub` **StringEquals** `repo:<github_repo>:ref:refs/heads/main`. Inline policy: `ecr:GetAuthorizationToken` on `*`; push/pull actions (`BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`, `BatchGetImage`, `GetDownloadUrlForLayer`, `DescribeImages`) on `arn:aws:ecr:<region>:<acct>:repository/devops-qr/*`; `eks:DescribeCluster` on `arn:aws:eks:<region>:<acct>:cluster/devops-qr-eks`. |
-| Role `devops-qr-gha-plan` | Trust: `sub` in [`repo:<github_repo>:pull_request`, `repo:<github_repo>:ref:refs/heads/main`]. Managed policy `ReadOnlyAccess`. Plans run with `-lock=false`. |
+| Role `devops-qr-gha-deploy` | Trust: `aud=sts.amazonaws.com`, `sub` **StringEquals** `<sub prefix>:ref:refs/heads/main`. Inline policy: `ecr:GetAuthorizationToken` on `*`; push/pull actions (`BatchCheckLayerAvailability`, `InitiateLayerUpload`, `UploadLayerPart`, `CompleteLayerUpload`, `PutImage`, `BatchGetImage`, `GetDownloadUrlForLayer`, `DescribeImages`) on `arn:aws:ecr:<region>:<acct>:repository/devops-qr/*`; `eks:DescribeCluster` on `arn:aws:eks:<region>:<acct>:cluster/devops-qr-eks`. |
+| Role `devops-qr-gha-plan` | Trust: `sub` in [`<sub prefix>:pull_request`, `<sub prefix>:ref:refs/heads/main`]. Managed policy `ReadOnlyAccess`. Plans run with `-lock=false`. |
 | Data | `aws_iam_session_context` of the caller, whose `issuer_arn` becomes output `admin_principal_arn` |
 
-Variables: `project="devops-qr"`, `region="us-east-1"`, `github_repo` (required, `owner/name`), `create_github_oidc_provider=true`.
+Variables: `project="devops-qr"`, `region="us-east-1"`, `github_oidc_sub_prefix` (required, `repo:owner/name` or `repo:owner@id/name@id`), `create_github_oidc_provider=true`.
 
 ### 5.3 main stack
 | Area | Spec |
@@ -318,7 +318,7 @@ Docker Desktop is a prerequisite and is not in the Brewfile (it is already insta
 | Local | `build` (native `qr-api:dev`, `qr-web:dev`), `local-up` (`docker compose up -d --build --wait`), `local-smoke`, `local-logs`, `local-down` (`compose down -v`) |
 | kind | `kind-up`, `kind-deploy` (build, `kind load docker-image`, namespace, `deploy.sh local dev`, wait for the init Job), `kind-smoke` (`:8080`), `kind-monitoring`, `kind-down` |
 | GitHub | `gh-repo` (`gh repo create devops-qr-capstone --private --source . --remote origin --push` if no origin), `gh-setup` (sets every variable whose TF output exists), `gh-teardown [SCOPE=main|all]` |
-| Cloud up | `bootstrap` (TF bootstrap apply with `github_repo` from `gh repo view --json nameWithOwner` and the OIDC toggle auto-detected, then `gh-setup`), `infra-plan`, `infra-up` (preflight: `aws eks describe-cluster-versions` must list `KUBERNETES_VERSION` in standard support, then TF main apply, `kubeconfig`, `gh-setup`), `kubeconfig`, `platform-up` (namespace and `monitoring-up eks`), `monitoring-up`, `release` (`gh workflow run app.yml --ref main`, poll for the new run id, `gh run watch --exit-status`), `deploy` (laptop escape hatch: `deploy.sh eks $(git rev-parse origin/main)`, after checking the image is in ECR), `url`, `smoke-test`, `grafana`, `status`, `up` (= bootstrap infra-up platform-up release smoke-test) |
+| Cloud up | `bootstrap` (TF bootstrap apply with `github_oidc_sub_prefix` from `gh api repos/<owner/repo>/actions/oidc/customization/sub` and the OIDC toggle auto-detected, then `gh-setup`), `infra-plan`, `infra-up` (preflight: `aws eks describe-cluster-versions` must list `KUBERNETES_VERSION` in standard support, then TF main apply, `kubeconfig`, `gh-setup`), `kubeconfig`, `platform-up` (namespace and `monitoring-up eks`), `monitoring-up`, `release` (`gh workflow run app.yml --ref main`, poll for the new run id, `gh run watch --exit-status`), `deploy` (laptop escape hatch: `deploy.sh eks $(git rev-parse origin/main)`, after checking the image is in ECR), `url`, `smoke-test`, `grafana`, `status`, `up` (= bootstrap infra-up platform-up release smoke-test) |
 | Teardown | `infra-down`, `nuke`, `verify-clean` |
 
 **Clean laptop → public URL → zero cost**
@@ -380,7 +380,7 @@ make nuke                        # back to $0; ends with verify-clean
 | IAM roles | `devops-qr-gha-deploy`, `devops-qr-gha-plan` (bootstrap); `devops-qr-api-s3`, `devops-qr-cloudwatch-agent` (main); node role is module-named |
 | S3 buckets | app `devops-qr-qrcodes-<account_id>`; state `devops-qr-tfstate-<account_id>`; state key `main/terraform.tfstate` |
 | TF outputs / GH variables | §5.4 table (exact names) |
-| GitHub repo | `devops-qr-capstone`, private, owner = `gh` authenticated user; OIDC `sub` = `repo:<owner>/devops-qr-capstone:ref:refs/heads/main` (deploy) |
+| GitHub repo | `devops-qr-capstone`, private, owner = `gh` authenticated user; OIDC `sub` = `<sub prefix>:ref:refs/heads/main`, where the prefix is what GitHub reports for the repo (`repo:<owner>@<id>/devops-qr-capstone@<id>` for repos with immutable subjects) (deploy) |
 | Helm | release `kps`, chart kube-prometheus-stack `93.4.0`, ns `monitoring`, `fullnameOverride: kps`; Grafana svc `kps-grafana:80`, local port 3001, secret `grafana-admin` |
 | Dashboard | ConfigMap `qr-dashboards`, label `grafana_dashboard: "1"`, file `monitoring/dashboards/qr-services.json`, uid `qr-services` |
 | AWS tags | `Project=devops-qr`, `ManagedBy=terraform`, `Stack=bootstrap|main` |

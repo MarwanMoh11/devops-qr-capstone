@@ -240,14 +240,28 @@ Refusing to delete the bootstrap stack. Fix the error, then: make infra-down && 
 }
 
 # terraform -chdir=infra/bootstrap <apply|destroy> with every required -var.
+# Start of the sub claim in this repo's GitHub OIDC tokens. Newer repos use immutable
+# subjects (repo:owner@id/name@id), so ask GitHub instead of building it from the name.
+gh_oidc_sub_prefix() {
+  local repo="$1" prefix
+  prefix="$(gh api "repos/$repo/actions/oidc/customization/sub" --jq '.sub_claim_prefix // empty')" \
+    || die "cannot read the OIDC subject format of $repo from GitHub"
+  echo "${prefix:-repo:$repo}"
+}
+
 tf_boot() {
-  local cmd="$1" repo
+  local cmd="$1" repo prefix
   shift
   repo="${GITHUB_REPO:-$(gh_repo)}"
   [ -n "$repo" ] || die "no GitHub repo behind 'origin'. Run: make gh-repo"
+  # Destroy ignores the value, so a GitHub API failure must not block teardown.
+  prefix="repo:$repo"
+  if [ "$cmd" != destroy ]; then
+    prefix="$(gh_oidc_sub_prefix "$repo")" || exit 1
+  fi
   run terraform -chdir="$TF_BOOT" "$cmd" -input=false \
     -var "region=$AWS_REGION" \
-    -var "github_repo=$repo" \
+    -var "github_oidc_sub_prefix=$prefix" \
     -var "create_github_oidc_provider=$(oidc_toggle)" \
     "$@"
 }

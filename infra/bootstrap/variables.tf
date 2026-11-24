@@ -20,13 +20,13 @@ variable "region" {
   }
 }
 
-variable "github_repo" {
-  description = "GitHub repository as owner/name. Case-sensitive: it must match the OIDC sub claim exactly."
+variable "github_oidc_sub_prefix" {
+  description = "Start of the sub claim GitHub puts in this repo's OIDC tokens, matched exactly (case-sensitive). Newer repos use immutable subjects (repo:owner@id/name@id), older ones repo:owner/name; scripts/lib.sh asks GitHub which."
   type        = string
 
   validation {
-    condition     = can(regex("^[A-Za-z0-9-]+/[A-Za-z0-9._-]+$", var.github_repo))
-    error_message = "github_repo must be owner/name, e.g. octocat/devops-qr-capstone."
+    condition     = can(regex("^repo:[A-Za-z0-9-]+(@[0-9]+)?/[A-Za-z0-9._-]+(@[0-9]+)?$", var.github_oidc_sub_prefix))
+    error_message = "github_oidc_sub_prefix must be repo:owner/name or repo:owner@id/name@id."
   }
 }
 
