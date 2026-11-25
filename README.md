@@ -8,8 +8,9 @@ CloudWatch Container Insights.
 Every step from a clean laptop to a public URL, and back to zero cost, is a `make` target.
 The only manual steps are installing the tools and logging in to AWS and GitHub.
 
-> **Status:** the local flows (compose, kind) are meant to be run first. The AWS flow
-> (`make up` … `make nuke`) is fully scripted but **has not yet been run against AWS**.
+> **Status:** the local flows (compose, kind) and the AWS deploy have both been run; the
+> results are under [What has been verified](#what-has-been-verified). Teardown (`make nuke`,
+> `make verify-clean`) is scripted but has not been run on AWS yet.
 
 ## Architecture
 
@@ -163,6 +164,8 @@ Run on AWS on 24 Nov 2026 (new Free-plan account, us-east-1, EKS 1.36):
 | S3 through Pod Identity | pass: the object is stored; reading it directly from S3 without credentials returns 403 |
 | Prometheus and Grafana on EKS | pass: both `qr-api` targets up, all 14 dashboard panels return data |
 | Container Insights | pass: node and `qr-app` pod metrics in CloudWatch |
+
+Screenshot and pipeline runs: [docs/EVIDENCE.md](docs/EVIDENCE.md).
 
 **Not yet run against AWS:** `nuke` and `verify-clean`.
 
