@@ -60,7 +60,7 @@ make test lint local-up local-smoke local-down
 make kind-up kind-deploy kind-smoke kind-down
 
 # cloud
-git add -A && git commit -m "Initial commit"   # gh-repo refuses a dirty tree
+git init -b main && git add -A && git commit -m "Initial commit"   # gh-repo refuses a dirty tree
 make gh-repo               # private repo, push main (CI green, AWS jobs skipped)
 make up                    # bootstrap -> infra-up (~15-20 min) -> platform-up -> release -> smoke-test
 make url                   # http://<nlb-dns>

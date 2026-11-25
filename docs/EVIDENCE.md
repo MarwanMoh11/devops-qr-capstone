@@ -20,6 +20,8 @@ page and read back from the private S3 bucket.
 
 ## Pipelines
 
+The links need access to the private GitHub repository.
+
 | Run | Trigger | Commit | Jobs | Result |
 |---|---|---|---|---|
 | [app](https://github.com/MarwanMoh11/devops-qr-capstone/actions/runs/45465024782) | `make release` | `095674b` | test (api, web), manifests, publish (api, web), deploy | success |

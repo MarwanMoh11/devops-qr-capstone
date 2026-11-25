@@ -41,7 +41,7 @@ make test lint local-up local-smoke local-down        # optional local proof
 make kind-up kind-deploy kind-smoke kind-monitoring    # optional cluster proof
 make grafana CLUSTER=kind                              # optional; Ctrl-C to stop
 make kind-down
-git add -A && git commit -m "Initial commit"   # gh-repo pushes commits only and refuses a dirty tree
+git init -b main && git add -A && git commit -m "Initial commit"   # gh-repo pushes commits only and refuses a dirty tree
 make gh-repo
 make up             # = bootstrap, infra-up, platform-up, release, smoke-test
 make url
